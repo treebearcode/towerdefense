@@ -46,7 +46,7 @@ const ALL_IMAGES = [
   'orc-back-4', 'orc-back-5', 'orc-back-6',
   'tile-ground-rune', 'tile-ground-plain',
   'ground-flowers', 'ground-rocks', 'ground-mushrooms',
-  'ground-moss-stone', 'ground-rune-big', 'ground-dirt',
+  'ground-rune-big', 'ground-dirt',
   'tile-spawn-portal',
   'base-castle-idle', 'base-castle-damaged',
   'proj-arrow2', 'proj-crystal-bolt', 'fx-blast2', 'coin2', 'heart',
@@ -86,6 +86,7 @@ let gold, lives, wave, waveActive, spawnQueue, spawnTimer;
 let enemies, towers, projectiles, selectedShop, selectedTower, ghost, rangeCircle;
 let hudGold, hudLives, hudWave, infoText, startBtn, upgradeBtn, speedBtn, speedBtnBg;
 let pauseSymbol, playSymbol, cardHighlights, waveBannerImg, waveBannerText;
+let tipBg, tipName, tipDesc;
 let castleSprite, paused, speedMult, gameOver;
 
 function create() {
@@ -158,7 +159,7 @@ function create() {
 
   this.input.keyboard.on('keydown-SPACE', () => startWave(this));
   this.input.keyboard.on('keydown-P', () => togglePause(this));
-  this.input.keyboard.on('keydown-ESC', () => { selectedShop = null; selectTower(null); updateCardHighlights(); ghost.setVisible(false); rangeCircle.setVisible(false); });
+  this.input.keyboard.on('keydown-ESC', () => { selectedShop = null; selectTower(null); updateCardHighlights(); hideShopTip(); ghost.setVisible(false); rangeCircle.setVisible(false); });
 }
 
 function pointerCell(p) {
@@ -173,12 +174,16 @@ function buildable(c, r) {
 }
 
 function drawMap(scene) {
-  // Ground: a fixed deterministic mix of tiles so the map stops
-  // repeating the same two. Same layout on every load.
+  // Ground: a fixed deterministic mix of GRASS tiles only, so the map
+  // stops repeating the same two. Same layout on every load. Stone
+  // tiles are never used off-path: stone reads as path, so a buildable
+  // tile that looks like stone makes it unclear where you can build.
+  // tile-ground-rune is the plain grass stand-in (grass with scattered
+  // rocks and a small rune circle); it is weighted heaviest.
   const variety = [
-    'tile-ground-plain', 'tile-ground-plain', 'tile-ground-plain',
+    'tile-ground-rune', 'tile-ground-rune', 'tile-ground-rune',
     'ground-flowers', 'ground-rocks', 'ground-mushrooms',
-    'ground-moss-stone', 'ground-rune-big', 'ground-dirt', 'tile-ground-rune',
+    'ground-rune-big', 'ground-dirt',
   ];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -278,6 +283,12 @@ function drawShop(scene) {
   const types = Object.keys(TOWERS);
   const cardFrames = { archer: 'ui-card-blue', crystal: 'ui-card-cyan', cannon: 'ui-card-gold' };
   cardHighlights = {};
+  // Hover tooltip: one shared panel, filled in per card. It sits above
+  // the shop so it never covers the card itself, and its x is clamped
+  // so it never runs past the canvas edge.
+  tipBg = scene.add.image(0, 0, 'ui-shop-card').setDisplaySize(230, 72).setVisible(false).setDepth(30);
+  tipName = scene.add.text(0, 0, '', { fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setVisible(false).setDepth(31);
+  tipDesc = scene.add.text(0, 0, '', { fontSize: '11px', color: '#aee6ff', wordWrap: { width: 200 }, align: 'center' }).setOrigin(0.5, 0).setVisible(false).setDepth(31);
   types.forEach((type, i) => {
     const def = TOWERS[type];
     const x = 16 + i * 120;
@@ -287,12 +298,16 @@ function drawShop(scene) {
     cardHighlights[type] = scene.add.image(cx, y + 65, 'ui-card-selected').setDisplaySize(116, 142).setVisible(false);
     const frame = scene.add.image(cx, y + 65, cardFrames[type]).setDisplaySize(104, 130)
       .setInteractive({ useHandCursor: true });
-    scene.add.image(cx, y + 30, `${type}-l1-idle`).setDisplaySize(48, 48);
-    scene.add.text(cx, y + 58, def.name, { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5, 0);
-    scene.add.image(x + 30, y + 88, 'ui-icon-coin').setDisplaySize(15, 15);
-    scene.add.text(x + 42, y + 88, `$${def.cost}`, { fontSize: '13px', color: '#ffd75e' }).setOrigin(0, 0.5);
-    scene.add.text(cx, y + 102, def.desc, { fontSize: '10px', color: '#aee6ff', wordWrap: { width: 96 }, align: 'center' }).setOrigin(0.5, 0);
+    // Card shows only the tower sprite and its cost. The name and
+    // description live in the hover tooltip, so no text can overflow
+    // the narrow card.
+    scene.add.image(cx, y + 42, `${type}-l1-idle`).setDisplaySize(56, 56);
+    scene.add.image(x + 30, y + 104, 'ui-icon-coin').setDisplaySize(15, 15);
+    scene.add.text(x + 42, y + 104, `$${def.cost}`, { fontSize: '13px', color: '#ffd75e' }).setOrigin(0, 0.5);
+    frame.on('pointerover', () => showShopTip(type, cx, shopY));
+    frame.on('pointerout', () => hideShopTip());
     frame.on('pointerdown', () => {
+      hideShopTip();
       selectedShop = selectedShop === type ? null : type;
       selectTower(null);
       updateCardHighlights();
@@ -311,6 +326,24 @@ function updateCardHighlights() {
   for (const [type, img] of Object.entries(cardHighlights)) {
     img.setVisible(type === selectedShop);
   }
+}
+
+// Shop-card hover tooltip. The panel is 230 wide; clamping its centre
+// to [118, WIDTH - 118] keeps it fully inside the canvas. Name is one
+// line, description wraps inside 200px and is at most two lines, so
+// both stay inside the 72px-tall panel.
+function showShopTip(type, cx, shopY) {
+  if (!tipBg) return;
+  const def = TOWERS[type];
+  const x = Math.max(118, Math.min(WIDTH - 118, cx));
+  const y = shopY - 44;
+  tipBg.setPosition(x, y).setVisible(true);
+  tipName.setText(def.name).setPosition(x, y - 18).setVisible(true);
+  tipDesc.setText(def.desc).setPosition(x, y + 2).setVisible(true);
+}
+
+function hideShopTip() {
+  [tipBg, tipName, tipDesc].forEach((o) => o && o.setVisible(false));
 }
 
 function updateHud() {
@@ -333,6 +366,7 @@ function togglePause(scene) {
 
 function placeTower(scene, c, r) {
   const def = TOWERS[selectedShop];
+  hideShopTip();
   if (gold < def.cost) { setInfo(`Not enough gold for ${def.name} ($${def.cost}).`); return; }
   gold -= def.cost;
   const { x, y } = cellCenter(c, r);
@@ -381,6 +415,7 @@ function upgradeSelected(scene) {
 
 function startWave(scene) {
   if (gameOver || waveActive || paused) return;
+  hideShopTip();
   if (wave >= TOTAL_WAVES) return;
   wave += 1;
   waveActive = true;
