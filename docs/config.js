@@ -12,7 +12,7 @@ export const START_LIVES = 20;
 export const TOTAL_WAVES = 10;
 
 // Fixed path, in grid cells. Enemies enter at (-1, 1) and reach the
-// castle at (14, 9). Turns are at the corner cells.
+// castle at (14, 9).
 export const PATH_CELLS = [
   [0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1],
   [8, 1], [9, 1], [10, 1], [11, 1],
@@ -26,18 +26,6 @@ export const PATH_CELLS = [
 ];
 export const SPAWN_CELL = [-1, 1];
 export const CASTLE_CELL = [14, 9];
-
-// Corner cells and how far to rotate the corner tile so its single
-// blue line joins the incoming and outgoing path segments.
-// The raw corner tile joins top -> right at 0 degrees.
-export const CORNERS = {
-  '11,1': 180, // left -> down
-  '11,4': 270, // top -> left
-  '3,4': 90,   // right -> down
-  '3,7': 0,    // top -> right
-  '12,7': 180, // left -> down
-  '12,9': 0,   // top -> right
-};
 
 export const TOWERS = {
   archer: {
@@ -64,14 +52,20 @@ export const ENEMIES = {
   goblin: {
     name: 'Armored Goblin', hp: 40, speed: 55, gold: 8, lives: 1,
     frames: 8, framePrefix: 'goblin-walk-',
+    sideFrames: 6, sidePrefix: 'goblin-side-',
+    backFrames: 6, backPrefix: 'goblin-back-',
   },
   skeleton: {
     name: 'Rune Skeleton', hp: 25, speed: 95, gold: 10, lives: 1,
     frames: 8, framePrefix: 'skeleton-walk-',
+    sideFrames: 6, sidePrefix: 'skeleton-side-',
+    backFrames: 6, backPrefix: 'skeleton-back-',
   },
   orc: {
     name: 'Clockwork Orc Golem', hp: 180, speed: 32, gold: 25, lives: 2,
     frames: 4, framePrefix: 'orc-walk-',
+    sideFrames: 6, sidePrefix: 'orc-side-',
+    backFrames: 6, backPrefix: 'orc-back-',
   },
 };
 

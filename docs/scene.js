@@ -1,17 +1,17 @@
-// scene.js — Magitech Tower Defense, V1.
+// scene.js — Magitech Tower Defense.
 // Phaser 3.60 is loaded as a classic script by index.html (window.Phaser).
 // One fixed path, 3 towers, 3 enemies, 10 waves. No physics engine:
 // enemies walk waypoints and projectiles home in on targets in update().
 
 import {
   TILE, COLS, ROWS, WIDTH, HEIGHT, START_GOLD, START_LIVES, TOTAL_WAVES,
-  PATH_CELLS, SPAWN_CELL, CASTLE_CELL, CORNERS, TOWERS, ENEMIES, WAVES,
+  PATH_CELLS, SPAWN_CELL, CASTLE_CELL, TOWERS, ENEMIES, WAVES,
   SPAWN_INTERVAL_MS, WAVE_CLEAR_BONUS,
 } from './config.js';
 
 const HUD_H = 40;   // top bar height
-const SHOP_H = 80;  // bottom shop bar height
-const GAME_H = HUD_H + HEIGHT + SHOP_H; // 760
+const SHOP_H = 140; // bottom shop bar height
+const GAME_H = HUD_H + HEIGHT + SHOP_H; // 820
 
 const pathSet = new Set(PATH_CELLS.map(([c, r]) => `${c},${r}`));
 const isPath = (c, r) => pathSet.has(`${c},${r}`);
@@ -32,11 +32,31 @@ const ALL_IMAGES = [
   'skeleton-walk-5', 'skeleton-walk-6', 'skeleton-walk-7', 'skeleton-walk-8',
   'orc-walk-1', 'orc-walk-2', 'orc-walk-3', 'orc-walk-4',
   'orc-attack-1', 'orc-attack-2', 'orc-attack-3', 'orc-attack-4',
+  'goblin-side-1', 'goblin-side-2', 'goblin-side-3',
+  'goblin-side-4', 'goblin-side-5', 'goblin-side-6',
+  'skeleton-side-1', 'skeleton-side-2', 'skeleton-side-3',
+  'skeleton-side-4', 'skeleton-side-5', 'skeleton-side-6',
+  'orc-side-1', 'orc-side-2', 'orc-side-3',
+  'orc-side-4', 'orc-side-5', 'orc-side-6',
+  'goblin-back-1', 'goblin-back-2', 'goblin-back-3',
+  'goblin-back-4', 'goblin-back-5', 'goblin-back-6',
+  'skeleton-back-1', 'skeleton-back-2', 'skeleton-back-3',
+  'skeleton-back-4', 'skeleton-back-5', 'skeleton-back-6',
+  'orc-back-1', 'orc-back-2', 'orc-back-3',
+  'orc-back-4', 'orc-back-5', 'orc-back-6',
   'tile-ground-rune', 'tile-ground-plain',
-  'tile-path-straight-v', 'tile-path-straight-h', 'tile-path-corner',
+  'ground-flowers', 'ground-rocks', 'ground-mushrooms',
+  'ground-moss-stone', 'ground-rune-big', 'ground-dirt',
   'tile-spawn-portal',
   'base-castle-idle', 'base-castle-damaged',
   'proj-arrow2', 'proj-crystal-bolt', 'fx-blast2', 'coin2', 'heart',
+  'ui-hud-bar', 'ui-shop-card', 'ui-btn-green', 'ui-btn-gold',
+  'ui-btn-small-cyan', 'ui-btn-small-gold',
+  'ui-icon-coin', 'ui-icon-heart', 'ui-icon-skull', 'ui-icon-star',
+  'ui-icon-swords', 'ui-icon-shield', 'ui-icon-upgrade', 'ui-icon-coins',
+  'ui-card-blue', 'ui-card-cyan', 'ui-card-gold', 'ui-card-selected',
+  'ui-banner-victory', 'ui-banner-defeat', 'ui-banner-wave',
+  'ui-btn-play', 'ui-btn-pause', 'ui-btn-close',
 ];
 
 export function startTowerDefense() {
@@ -64,7 +84,8 @@ function preload() {
 
 let gold, lives, wave, waveActive, spawnQueue, spawnTimer;
 let enemies, towers, projectiles, selectedShop, selectedTower, ghost, rangeCircle;
-let hudGold, hudLives, hudWave, infoText, startBtn, upgradeBtn, pauseBtn, speedBtn;
+let hudGold, hudLives, hudWave, infoText, startBtn, upgradeBtn, speedBtn, speedBtnBg;
+let pauseSymbol, playSymbol, cardHighlights, waveBannerImg, waveBannerText;
 let castleSprite, paused, speedMult, gameOver;
 
 function create() {
@@ -75,21 +96,17 @@ function create() {
   paused = false; speedMult = 1; gameOver = false;
 
   // Walk animations: each frame is its own texture, so list them by key.
-  this.anims.create({
-    key: 'goblin-walk',
-    frames: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ key: `goblin-walk-${n}` })),
-    frameRate: 10, repeat: -1,
-  });
-  this.anims.create({
-    key: 'skeleton-walk',
-    frames: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ key: `skeleton-walk-${n}` })),
-    frameRate: 10, repeat: -1,
-  });
-  this.anims.create({
-    key: 'orc-walk',
-    frames: [1, 2, 3, 4].map((n) => ({ key: `orc-walk-${n}` })),
-    frameRate: 6, repeat: -1,
-  });
+  // Every enemy has three walk sets — front (down), side (left/right,
+  // flipped for left), back (up) — and the update loop swaps between
+  // them as the enemy turns onto a new path segment.
+  for (const [type, def] of Object.entries(ENEMIES)) {
+    const rate = type === 'orc' ? 6 : 10;
+    const mkFrames = (prefix, count) =>
+      Array.from({ length: count }, (_, i) => ({ key: `${prefix}${i + 1}` }));
+    this.anims.create({ key: `${type}-walk-front`, frames: mkFrames(def.framePrefix, def.frames), frameRate: rate, repeat: -1 });
+    this.anims.create({ key: `${type}-walk-side`, frames: mkFrames(def.sidePrefix, def.sideFrames), frameRate: rate, repeat: -1 });
+    this.anims.create({ key: `${type}-walk-back`, frames: mkFrames(def.backPrefix, def.backFrames), frameRate: rate, repeat: -1 });
+  }
   this.anims.create({
     key: 'orc-attack',
     frames: [1, 2, 3, 4].map((n) => ({ key: `orc-attack-${n}` })),
@@ -99,6 +116,12 @@ function create() {
   drawMap(this);
   drawHud(this);
   drawShop(this);
+
+  // Wave-start banner, hidden until a wave starts.
+  waveBannerImg = this.add.image(WIDTH / 2, HUD_H + 110, 'ui-banner-wave').setDisplaySize(360, 164).setVisible(false).setDepth(20);
+  waveBannerText = this.add.text(WIDTH / 2, HUD_H + 110, '', {
+    fontSize: '22px', color: '#ffffff', stroke: '#0a2a3a', strokeThickness: 4,
+  }).setOrigin(0.5).setVisible(false).setDepth(21);
 
   // Ghost preview + range circle for the tower about to be placed.
   ghost = this.add.sprite(0, 0, 'archer-l1-idle').setVisible(false).setAlpha(0.6);
@@ -135,7 +158,7 @@ function create() {
 
   this.input.keyboard.on('keydown-SPACE', () => startWave(this));
   this.input.keyboard.on('keydown-P', () => togglePause(this));
-  this.input.keyboard.on('keydown-ESC', () => { selectedShop = null; selectTower(null); ghost.setVisible(false); rangeCircle.setVisible(false); });
+  this.input.keyboard.on('keydown-ESC', () => { selectedShop = null; selectTower(null); updateCardHighlights(); ghost.setVisible(false); rangeCircle.setVisible(false); });
 }
 
 function pointerCell(p) {
@@ -150,28 +173,39 @@ function buildable(c, r) {
 }
 
 function drawMap(scene) {
-  // Ground: plain stone, with a rune tile sprinkled in a fixed pattern.
+  // Ground: a fixed deterministic mix of tiles so the map stops
+  // repeating the same two. Same layout on every load.
+  const variety = [
+    'tile-ground-plain', 'tile-ground-plain', 'tile-ground-plain',
+    'ground-flowers', 'ground-rocks', 'ground-mushrooms',
+    'ground-moss-stone', 'ground-rune-big', 'ground-dirt', 'tile-ground-rune',
+  ];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const { x, y } = cellCenter(c, r);
       if (isPath(c, r)) continue;
       if (isCastle(c, r)) continue;
-      const key = (c * 7 + r * 11) % 9 === 0 ? 'tile-ground-rune' : 'tile-ground-plain';
+      const key = variety[(c * 7 + r * 11 + ((c * r) % 5)) % variety.length];
       scene.add.image(x, y, key).setDisplaySize(TILE, TILE);
     }
   }
-  // Path tiles.
+  // Path base: plain stone under the whole path. No blue-line tile art —
+  // the generator's corner tiles never lined up, so the glowing line is
+  // drawn in code over the exact waypoint centres instead.
   for (const [c, r] of PATH_CELLS) {
     const { x, y } = cellCenter(c, r);
-    const key = `${c},${r}`;
-    if (CORNERS[key] !== undefined) {
-      scene.add.image(x, y, 'tile-path-corner').setDisplaySize(TILE, TILE).setAngle(CORNERS[key]);
-    } else if (c === 0 || c === COLS - 1 || (r > 0 && isPath(c, r - 1) && isPath(c, r + 1))) {
-      scene.add.image(x, y, 'tile-path-straight-v').setDisplaySize(TILE, TILE);
-    } else {
-      scene.add.image(x, y, 'tile-path-straight-h').setDisplaySize(TILE, TILE);
-    }
+    scene.add.image(x, y, 'tile-ground-plain').setDisplaySize(TILE, TILE);
   }
+  const line = scene.add.graphics();
+  const trace = (g) => {
+    g.beginPath();
+    waypoints.forEach((w, i) => (i === 0 ? g.moveTo(w.x, w.y) : g.lineTo(w.x, w.y)));
+    g.strokePath();
+  };
+  line.lineStyle(14, 0x35e0ff, 0.25);
+  trace(line);
+  line.lineStyle(4, 0x9ff3ff, 0.95);
+  trace(line);
   // Spawn portal at the entry, castle at the end.
   const s = cellCenter(SPAWN_CELL[0], SPAWN_CELL[1]);
   scene.add.image(s.x, s.y, 'tile-spawn-portal').setDisplaySize(TILE, TILE);
@@ -181,53 +215,107 @@ function drawMap(scene) {
 
 function drawHud(scene) {
   scene.add.rectangle(0, 0, WIDTH, HUD_H, 0x141828).setOrigin(0);
-  scene.add.text(12, 10, 'Magitech Tower Defense', { fontSize: '20px', color: '#aee6ff' });
-  hudGold = scene.add.text(340, 11, '', { fontSize: '18px', color: '#ffd75e' });
-  hudLives = scene.add.text(480, 11, '', { fontSize: '18px', color: '#ff9a9a' });
-  hudWave = scene.add.text(620, 11, '', { fontSize: '18px', color: '#c9f7c5' });
-  pauseBtn = scene.add.text(800, 11, '⏸ Pause (P)', { fontSize: '16px', color: '#ffffff' })
+  scene.add.image(WIDTH / 2, HUD_H / 2, 'ui-hud-bar').setDisplaySize(WIDTH, HUD_H);
+  scene.add.image(22, HUD_H / 2, 'ui-icon-shield').setDisplaySize(26, 26);
+  scene.add.text(40, HUD_H / 2, 'Magitech Tower Defense', { fontSize: '17px', color: '#aee6ff' }).setOrigin(0, 0.5);
+  // Each stat is an icon plus its number in its own slot, with room
+  // between slots so the texts can never bleed into each other.
+  scene.add.image(330, HUD_H / 2, 'ui-icon-coin').setDisplaySize(24, 24);
+  hudGold = scene.add.text(358, HUD_H / 2, '', { fontSize: '18px', color: '#ffd75e' }).setOrigin(0, 0.5);
+  scene.add.image(460, HUD_H / 2, 'ui-icon-heart').setDisplaySize(24, 24);
+  hudLives = scene.add.text(488, HUD_H / 2, '', { fontSize: '18px', color: '#ff9a9a' }).setOrigin(0, 0.5);
+  scene.add.image(590, HUD_H / 2, 'ui-icon-skull').setDisplaySize(24, 24);
+  hudWave = scene.add.text(618, HUD_H / 2, '', { fontSize: '18px', color: '#c9f7c5' }).setOrigin(0, 0.5);
+  // Round pause button. The white pause bars were knocked out by the
+  // white-to-transparent step, so the symbol is drawn in code on top
+  // of the button sprite: two bars when running, a triangle when paused.
+  const pauseBg = scene.add.image(830, HUD_H / 2, 'ui-btn-pause').setDisplaySize(34, 34)
     .setInteractive({ useHandCursor: true })
     .on('pointerdown', () => togglePause(scene));
-  speedBtn = scene.add.text(900, 11, '1x', { fontSize: '16px', color: '#ffffff' })
+  pauseSymbol = scene.add.graphics();
+  pauseSymbol.fillStyle(0xffffff, 1);
+  pauseSymbol.fillRect(830 - 7, HUD_H / 2 - 8, 5, 16);
+  pauseSymbol.fillRect(830 + 2, HUD_H / 2 - 8, 5, 16);
+  playSymbol = scene.add.graphics();
+  playSymbol.fillStyle(0xffffff, 1);
+  playSymbol.fillTriangle(830 - 6, HUD_H / 2 - 9, 830 - 6, HUD_H / 2 + 9, 830 + 9, HUD_H / 2);
+  playSymbol.setVisible(false);
+  void pauseBg;
+  // Round speed button: the speed text is drawn on top of the sprite.
+  speedBtnBg = scene.add.image(895, HUD_H / 2, 'ui-btn-play').setDisplaySize(34, 34)
     .setInteractive({ useHandCursor: true })
     .on('pointerdown', () => {
       speedMult = speedMult === 1 ? 2 : 1;
       speedBtn.setText(`${speedMult}x`);
     });
+  speedBtn = scene.add.text(895, HUD_H / 2, '1x', { fontSize: '14px', color: '#ffffff' }).setOrigin(0.5);
   updateHud();
 }
 
+// A sprite-backed button: background image, label text drawn on top,
+// optional sub-line and optional icon at the left. Returns a group with
+// a setVisible that hides/shows the whole button, so callers can keep
+// using startBtn.setVisible(...) / upgradeBtn.setVisible(...).
+function makeButton(scene, x, y, w, h, bgKey, labelText, subText, onTap, iconKey) {
+  const bg = scene.add.image(x + w / 2, y + h / 2, bgKey).setDisplaySize(w, h)
+    .setInteractive({ useHandCursor: true }).on('pointerdown', onTap);
+  const cx = x + w / 2 + (iconKey ? 12 : 0);
+  const label = scene.add.text(cx, y + h / 2 - (subText ? 10 : 0), labelText, { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
+  const sub = subText
+    ? scene.add.text(cx, y + h / 2 + 14, subText, { fontSize: '11px', color: '#e8f6ff' }).setOrigin(0.5)
+    : null;
+  const icon = iconKey ? scene.add.image(x + 24, y + h / 2, iconKey).setDisplaySize(22, 22) : null;
+  return {
+    bg, label, sub, icon,
+    setVisible(v) { [bg, label, sub, icon].forEach((o) => o && o.setVisible(v)); },
+  };
+}
+
 function drawShop(scene) {
-  const y = HUD_H + HEIGHT + 6;
-  scene.add.rectangle(0, HUD_H + HEIGHT, WIDTH, SHOP_H, 0x141828).setOrigin(0);
+  const shopY = HUD_H + HEIGHT;
+  scene.add.rectangle(0, shopY, WIDTH, SHOP_H, 0x141828).setOrigin(0);
+  scene.add.image(WIDTH / 2, shopY + SHOP_H / 2, 'ui-shop-card').setDisplaySize(WIDTH, SHOP_H);
   const types = Object.keys(TOWERS);
+  const cardFrames = { archer: 'ui-card-blue', crystal: 'ui-card-cyan', cannon: 'ui-card-gold' };
+  cardHighlights = {};
   types.forEach((type, i) => {
     const def = TOWERS[type];
-    const x = 20 + i * 220;
-    const card = scene.add.rectangle(x, y, 200, 60, 0x2a3050).setOrigin(0).setInteractive({ useHandCursor: true });
-    scene.add.image(x + 32, y + 30, `${type}-l1-idle`).setDisplaySize(48, 48);
-    scene.add.text(x + 62, y + 6, def.name, { fontSize: '15px', color: '#ffffff' });
-    scene.add.text(x + 62, y + 26, `$${def.cost} — ${def.desc}`, { fontSize: '12px', color: '#aee6ff' });
-    card.on('pointerdown', () => {
+    const x = 16 + i * 120;
+    const y = shopY + 5;
+    const cx = x + 52;
+    // White selection frame sits behind the card, peeking out as a ring.
+    cardHighlights[type] = scene.add.image(cx, y + 65, 'ui-card-selected').setDisplaySize(116, 142).setVisible(false);
+    const frame = scene.add.image(cx, y + 65, cardFrames[type]).setDisplaySize(104, 130)
+      .setInteractive({ useHandCursor: true });
+    scene.add.image(cx, y + 30, `${type}-l1-idle`).setDisplaySize(48, 48);
+    scene.add.text(cx, y + 58, def.name, { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5, 0);
+    scene.add.image(x + 30, y + 88, 'ui-icon-coin').setDisplaySize(15, 15);
+    scene.add.text(x + 42, y + 88, `$${def.cost}`, { fontSize: '13px', color: '#ffd75e' }).setOrigin(0, 0.5);
+    scene.add.text(cx, y + 102, def.desc, { fontSize: '10px', color: '#aee6ff', wordWrap: { width: 96 }, align: 'center' }).setOrigin(0.5, 0);
+    frame.on('pointerdown', () => {
       selectedShop = selectedShop === type ? null : type;
       selectTower(null);
+      updateCardHighlights();
       ghost.setTexture(`${type}-l1-idle`);
-      card.setFillStyle(selectedShop === type ? 0x3a5a80 : 0x2a3050);
-      setInfo(selectedShop ? `Placing ${def.name} — click a free tile. Right-click / Esc to cancel.` : '');
+      setInfo(selectedShop ? `Placing ${def.name} — click a free tile. Esc to cancel.` : '');
     });
   });
-  startBtn = scene.add.text(700, y + 16, '▶ Start Wave (Space)', { fontSize: '17px', color: '#ffffff', backgroundColor: '#2e7d32', padding: { x: 10, y: 8 } })
-    .setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => startWave(scene));
-  upgradeBtn = scene.add.text(700, y + 16, '', { fontSize: '15px', color: '#ffffff', backgroundColor: '#7b5e00', padding: { x: 10, y: 8 } })
-    .setInteractive({ useHandCursor: true }).setVisible(false)
-    .on('pointerdown', () => upgradeSelected(scene));
-  infoText = scene.add.text(20, y + 66, '', { fontSize: '12px', color: '#c9c9c9' });
+  startBtn = makeButton(scene, 700, shopY + 28, 220, 84, 'ui-btn-green', 'Start Wave', '(Space)', () => startWave(scene), 'ui-icon-swords');
+  upgradeBtn = makeButton(scene, 700, shopY + 28, 220, 84, 'ui-btn-gold', 'Upgrade', '$0', () => upgradeSelected(scene), 'ui-icon-upgrade');
+  upgradeBtn.setVisible(false);
+  infoText = scene.add.text(392, shopY + 16, '', { fontSize: '12px', color: '#c9c9c9', wordWrap: { width: 290 } });
+}
+
+function updateCardHighlights() {
+  if (!cardHighlights) return;
+  for (const [type, img] of Object.entries(cardHighlights)) {
+    img.setVisible(type === selectedShop);
+  }
 }
 
 function updateHud() {
-  hudGold.setText(`🪙 ${gold}`);
-  hudLives.setText(`❤ ${lives}`);
+  hudGold.setText(`${gold}`);
+  hudLives.setText(`${lives}`);
   hudWave.setText(`Wave ${wave}/${TOTAL_WAVES}`);
 }
 
@@ -238,7 +326,8 @@ function setInfo(msg) {
 function togglePause(scene) {
   if (gameOver) return;
   paused = !paused;
-  pauseBtn.setText(paused ? '▶ Resume (P)' : '⏸ Pause (P)');
+  pauseSymbol.setVisible(!paused);
+  playSymbol.setVisible(paused);
   setInfo(paused ? 'Paused.' : '');
 }
 
@@ -261,7 +350,9 @@ function selectTower(tower) {
     startBtn.setVisible(false);
     if (tower.level < 3) {
       const cost = def.upgradeCost[tower.level - 1];
-      upgradeBtn.setText(`⬆ Upgrade ${def.name} to Lv${tower.level + 1} ($${cost})`).setVisible(true);
+      upgradeBtn.label.setText(`Upgrade to Lv${tower.level + 1}`);
+      upgradeBtn.sub.setText(`$${cost}`);
+      upgradeBtn.setVisible(true);
     } else {
       upgradeBtn.setVisible(false);
     }
@@ -302,6 +393,14 @@ function startWave(scene) {
   spawnTimer = 0;
   updateHud();
   setInfo(`Wave ${wave} — ${spawnQueue.length} enemies incoming.`);
+  // Flash the wave banner, then fade it out.
+  waveBannerText.setText(`Wave ${wave}`);
+  waveBannerImg.setVisible(true).setAlpha(1);
+  waveBannerText.setVisible(true).setAlpha(1);
+  scene.tweens.add({
+    targets: [waveBannerImg, waveBannerText], alpha: 0, duration: 900, delay: 700,
+    onComplete: () => { waveBannerImg.setVisible(false); waveBannerText.setVisible(false); },
+  });
 }
 
 function spawnEnemy(scene, type) {
@@ -309,15 +408,31 @@ function spawnEnemy(scene, type) {
   const hpScale = 1 + 0.25 * (wave - 1);
   const hp = Math.round(def.hp * hpScale);
   const start = waypoints[0];
-  const sprite = scene.add.sprite(start.x, start.y, `${def.framePrefix}1`).setDisplaySize(46, 46);
-  sprite.play(`${type === 'orc' ? 'orc-walk' : type + '-walk'}`);
+  const sprite = scene.add.sprite(start.x, start.y, `${def.sidePrefix}1`).setDisplaySize(46, 46);
+  // Enemies enter moving right along row 1, so they start on the side set.
+  sprite.play(`${type}-walk-side`);
   const bg = scene.add.rectangle(start.x, start.y - 26, 34, 5, 0x000000).setOrigin(0.5);
   const fg = scene.add.rectangle(start.x, start.y - 26, 34, 5, 0x4ade80).setOrigin(0.5);
   enemies.push({
     type, def, sprite, hp, maxHp: hp,
     speed: def.speed, gold: def.gold, lives: def.lives,
-    wp: 1, hpBg: bg, hpFg: fg, dead: false,
+    wp: 1, hpBg: bg, hpFg: fg, dead: false, dir: 'right',
   });
+}
+
+// Pick the walk set for the direction an enemy is travelling and swap
+// the animation when it changes. Side frames face right as drawn and
+// are flipped for leftward movement; front is down, back is up.
+function setWalkDir(e, dx, dy) {
+  let dir;
+  if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'right' : 'left';
+  else dir = dy > 0 ? 'down' : 'up';
+  if (dir === e.dir) return;
+  e.dir = dir;
+  const anim = dir === 'right' || dir === 'left' ? `${e.type}-walk-side`
+    : dir === 'down' ? `${e.type}-walk-front` : `${e.type}-walk-back`;
+  e.sprite.play(anim);
+  e.sprite.setFlipX(dir === 'left');
 }
 
 function damageEnemy(scene, enemy, dmg) {
@@ -386,6 +501,7 @@ function update(time, delta) {
         continue;
       }
     } else {
+      setWalkDir(e, dx, dy);
       e.sprite.x += (dx / dist) * step;
       e.sprite.y += (dy / dist) * step;
     }
@@ -458,16 +574,20 @@ function endGame(scene, won) {
   waveActive = false;
   startBtn.setVisible(false);
   upgradeBtn.setVisible(false);
-  const overlay = scene.add.rectangle(0, HUD_H, WIDTH, HEIGHT, 0x000000, 0.65).setOrigin(0);
-  const title = scene.add.text(WIDTH / 2, HUD_H + 240, won ? '🏰 Victory!' : '💔 The castle has fallen', {
+  scene.add.rectangle(0, HUD_H, WIDTH, HEIGHT, 0x000000, 0.65).setOrigin(0);
+  const bannerY = HUD_H + 150;
+  scene.add.image(WIDTH / 2, bannerY, won ? 'ui-banner-victory' : 'ui-banner-defeat')
+    .setDisplaySize(480, won ? 184 : 200);
+  if (won) {
+    scene.add.image(WIDTH / 2 - 275, bannerY, 'ui-icon-star').setDisplaySize(40, 40);
+    scene.add.image(WIDTH / 2 + 275, bannerY, 'ui-icon-star').setDisplaySize(40, 40);
+  }
+  scene.add.text(WIDTH / 2, bannerY + 130, won ? 'Victory!' : 'The castle has fallen', {
     fontSize: '36px', color: won ? '#ffd75e' : '#ff9a9a',
   }).setOrigin(0.5);
-  const sub = scene.add.text(WIDTH / 2, HUD_H + 290,
+  scene.add.text(WIDTH / 2, bannerY + 180,
     won ? `You held the castle through all ${TOTAL_WAVES} waves.` : `You fell on wave ${wave}.`,
     { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
-  const again = scene.add.text(WIDTH / 2, HUD_H + 340, '↻ Play again', {
-    fontSize: '20px', color: '#ffffff', backgroundColor: '#2e7d32', padding: { x: 14, y: 10 },
-  }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => scene.scene.restart());
-  void overlay; void title; void sub; void again;
+  makeButton(scene, WIDTH / 2 - 110, bannerY + 220, 220, 84, 'ui-btn-green', 'Play again', '',
+    () => scene.scene.restart());
 }
