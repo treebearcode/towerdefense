@@ -221,8 +221,9 @@ function drawMap(scene) {
 function drawHud(scene) {
   scene.add.rectangle(0, 0, WIDTH, HUD_H, 0x141828).setOrigin(0);
   scene.add.image(WIDTH / 2, HUD_H / 2, 'ui-hud-bar').setDisplaySize(WIDTH, HUD_H);
-  scene.add.image(22, HUD_H / 2, 'ui-icon-shield').setDisplaySize(26, 26);
-  scene.add.text(40, HUD_H / 2, 'Magitech Tower Defense', { fontSize: '17px', color: '#aee6ff' }).setOrigin(0, 0.5);
+  // Shield emblem kept small and well clear of the title text.
+  scene.add.image(20, HUD_H / 2, 'ui-icon-shield').setDisplaySize(22, 22);
+  scene.add.text(50, HUD_H / 2, 'Magitech Tower Defense', { fontSize: '17px', color: '#aee6ff' }).setOrigin(0, 0.5);
   // Each stat is an icon plus its number in its own slot, with room
   // between slots so the texts can never bleed into each other.
   scene.add.image(330, HUD_H / 2, 'ui-icon-coin').setDisplaySize(24, 24);
