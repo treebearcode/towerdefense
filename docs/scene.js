@@ -265,7 +265,7 @@ function makeButton(scene, x, y, w, h, bgKey, labelText, subText, onTap, iconKey
   const bg = scene.add.image(x + w / 2, y + h / 2, bgKey).setDisplaySize(w, h)
     .setInteractive({ useHandCursor: true }).on('pointerdown', onTap);
   const cx = x + w / 2 + (iconKey ? 12 : 0);
-  const label = scene.add.text(cx, y + h / 2 - (subText ? 10 : 0), labelText, { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
+  const label = scene.add.text(cx, y + h / 2 - (subText ? 10 : 0), labelText, { fontSize: '16px', color: '#ffffff' }).setOrigin(0.5);
   const sub = subText
     ? scene.add.text(cx, y + h / 2 + 14, subText, { fontSize: '11px', color: '#e8f6ff' }).setOrigin(0.5)
     : null;
@@ -315,8 +315,8 @@ function drawShop(scene) {
       setInfo(selectedShop ? `Placing ${def.name} — click a free tile. Esc to cancel.` : '');
     });
   });
-  startBtn = makeButton(scene, 700, shopY + 28, 220, 84, 'ui-btn-green', 'Start Wave', '(Space)', () => startWave(scene), 'ui-icon-swords');
-  upgradeBtn = makeButton(scene, 700, shopY + 28, 220, 84, 'ui-btn-gold', 'Upgrade', '$0', () => upgradeSelected(scene), 'ui-icon-upgrade');
+  startBtn = makeButton(scene, 692, shopY + 28, 240, 84, 'ui-btn-green', 'Start Wave', '', () => startWave(scene), 'ui-icon-swords');
+  upgradeBtn = makeButton(scene, 692, shopY + 28, 240, 84, 'ui-btn-gold', 'Upgrade', '$0', () => upgradeSelected(scene), 'ui-icon-upgrade');
   upgradeBtn.setVisible(false);
   infoText = scene.add.text(392, shopY + 16, '', { fontSize: '12px', color: '#c9c9c9', wordWrap: { width: 290 } });
 }
@@ -623,6 +623,6 @@ function endGame(scene, won) {
   scene.add.text(WIDTH / 2, bannerY + 180,
     won ? `You held the castle through all ${TOTAL_WAVES} waves.` : `You fell on wave ${wave}.`,
     { fontSize: '18px', color: '#ffffff' }).setOrigin(0.5);
-  makeButton(scene, WIDTH / 2 - 110, bannerY + 220, 220, 84, 'ui-btn-green', 'Play again', '',
+  makeButton(scene, WIDTH / 2 - 120, bannerY + 220, 240, 84, 'ui-btn-green', 'Play again', '',
     () => scene.scene.restart());
 }
