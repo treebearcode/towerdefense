@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>Magitech Tower Defense</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="game"></div>
+<div id="bootfail" hidden>
+  The game couldn&rsquo;t start &mdash; a file it needs didn&rsquo;t load.
+  Check your connection, then close and reopen this page.
+</div>
+<div id="rerr" hidden
+  style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fff;font:13px monospace;padding:8px;white-space:pre-wrap;word-break:break-word;"></div>
+
+<script>
+  window.__tdBoot = { booted: false };
+  window.__tdShowFail = function (msg) {
+    var el = document.getElementById("bootfail");
+    if (!el || window.__tdBoot.booted) return;
+    el.hidden = false;
+    if (msg) {
+      var p = document.createElement("p");
+      p.style.cssText = "font-size:13px;opacity:.75;word-break:break-word;";
+      p.textContent = String(msg);
+      el.appendChild(p);
+    }
+  };
+  window.addEventListener("error", function (e) {
+    if (!window.__tdBoot.booted) {
+      window.__tdShowFail(e.message);
+      return;
+    }
+    var el = document.getElementById("rerr");
+    if (el) {
+      el.hidden = false;
+      el.textContent = "Game error: " + e.message +
+        " @ " + (e.filename || "?") + ":" + (e.lineno || "?");
+    }
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var el = document.getElementById("rerr");
+    if (el && window.__tdBoot.booted) {
+      el.hidden = false;
+      el.textContent = "Game error: " + (e.reason && e.reason.message
+        ? e.reason.message : String(e.reason));
+    }
+  });
+</script>
+
+<!-- Phaser 3.60, bundled locally. If this copy ever fails to load,
+     the boot script below falls back to the CDN copy. -->
+<script src="assets/phaser.min.js"></script>
+
+<!-- The game itself, as ES modules. Serve this folder over HTTP
+     (python3 -m http.server in docs/), not file://. GitHub Pages
+     serves these files as-is. -->
+<script type="module" src="./main.js" onerror="window.__tdShowFail('Could not load the game module — serve this folder over HTTP (python3 -m http.server in docs/), not file://.')"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    function start() {
+      if (window.__tdBoot.booted) return;
+      if (typeof window.__startTowerDefense === "function" && window.__startTowerDefense()) {
+        window.__tdBoot.booted = true;
+      } else {
+        window.__tdShowFail("Phaser loaded but the game did not start.");
+      }
+    }
+    if (typeof Phaser !== "undefined") {
+      start();
+    } else {
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js";
+      s.onload = start;
+      s.onerror = function () {
+        window.__tdShowFail("Could not load Phaser (local copy or CDN).");
+      };
+      document.head.appendChild(s);
+    }
+  });
+</script>
+</body>
+</html>
